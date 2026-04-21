@@ -51,7 +51,11 @@ class MainActivity : AppCompatActivity() {
         binding.receiverName.text = dashboard.receiverName
         binding.receiverId.text = dashboard.receiverId
         binding.serviceStatus.text =
-            if (dashboard.serviceRunning) "Running on port ${ReceiverService.PORT}" else "Stopped"
+            if (dashboard.serviceRunning) {
+                "Running on port ${ReceiverService.PORT}"
+            } else {
+                dashboard.serviceError?.let { "Stopped: $it" } ?: "Stopped"
+            }
         binding.nextAction.text = dashboard.nextAction
         binding.pairingCode.text = dashboard.pairingCode
         binding.challengeExpiresAt.text = formatTimestamp(dashboard.challengeExpiresAt)

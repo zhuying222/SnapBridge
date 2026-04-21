@@ -188,8 +188,11 @@ class PairingRepository(context: Context) {
         }
     }
 
-    fun markServiceRunning(isRunning: Boolean) {
-        prefs.edit().putBoolean(KEY_SERVICE_RUNNING, isRunning).apply()
+    fun markServiceRunning(isRunning: Boolean, error: String? = null) {
+        prefs.edit()
+            .putBoolean(KEY_SERVICE_RUNNING, isRunning)
+            .putString(KEY_SERVICE_ERROR, error)
+            .apply()
     }
 
     fun dashboardState(): ReceiverDashboardState {
@@ -197,14 +200,21 @@ class PairingRepository(context: Context) {
             val state = refreshChallengeIfExpired(loadState())
             val pendingRequest = state.pairingRequests.firstOrNull { it.status == STATUS_PENDING }
             val lastCapture = state.recentCaptures.firstOrNull()
+            val serviceRunning = prefs.getBoolean(KEY_SERVICE_RUNNING, false)
+            val serviceError = prefs.getString(KEY_SERVICE_ERROR, null)
             return ReceiverDashboardState(
                 receiverName = state.receiverName,
                 receiverId = state.receiverId,
                 pairingCode = state.challenge.pairingCode,
                 challengeExpiresAt = state.challenge.expiresAt,
-                serviceRunning = prefs.getBoolean(KEY_SERVICE_RUNNING, false),
+                serviceRunning = serviceRunning,
+                serviceError = serviceError,
                 pairedSenderCount = state.pairedSenders.size,
                 nextAction = when {
+                    !serviceRunning && !serviceError.isNullOrBlank() ->
+                        "Receiver HTTP service failed to start: $serviceError"
+                    !serviceRunning ->
+                        "Open the receiver screen and wait for the local HTTP service to start."
                     pendingRequest != null ->
                         "Verify the six-digit code on both devices, then approve or reject this sender."
                     state.pairedSenders.isEmpty() ->
@@ -297,6 +307,7 @@ class PairingRepository(context: Context) {
     companion object {
         private const val KEY_STATE = "receiver_state"
         private const val KEY_SERVICE_RUNNING = "service_running"
+        private const val KEY_SERVICE_ERROR = "service_error"
         private const val CHALLENGE_TTL_SECONDS = 300L
         private const val MAX_REQUESTS = 20
         private const val MAX_PAIRED_SENDERS = 8

@@ -116,6 +116,7 @@ data class ReceiverDashboardState(
     val pairingCode: String,
     val challengeExpiresAt: String,
     val serviceRunning: Boolean,
+    val serviceError: String?,
     val pairedSenderCount: Int,
     val nextAction: String,
     val pendingRequest: PendingPairingSummary?,

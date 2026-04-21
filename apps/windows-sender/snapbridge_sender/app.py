@@ -324,7 +324,7 @@ class SnapBridgeApp:
                 self.root.after(0, lambda: self._on_pairing_success(receiver))
             except Exception as exc:
                 logging.exception("Pairing failed")
-                self.root.after(0, lambda: self._on_pairing_error(exc))
+                self.root.after(0, lambda exc=exc: self._on_pairing_error(exc))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -432,7 +432,7 @@ class SnapBridgeApp:
                 self.root.after(0, lambda: self._on_transfer_success(ack, capture, is_retry))
             except Exception as exc:
                 logging.exception("Transfer failed")
-                self.root.after(0, lambda: self._on_transfer_error(exc))
+                self.root.after(0, lambda exc=exc: self._on_transfer_error(exc))
 
         threading.Thread(target=worker, daemon=True).start()
 

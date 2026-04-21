@@ -9,12 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.content.ContextCompat
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
 
 class ReceiverService : Service() {
-    private var server = null as io.ktor.server.engine.ApplicationEngine?
+    private var server: ReceiverHttpServer? = null
     private lateinit var pairingRepository: PairingRepository
     private lateinit var notificationManager: NotificationManager
 
@@ -24,23 +23,30 @@ class ReceiverService : Service() {
         val gallerySaver = GallerySaver(this)
         notificationManager = getSystemService(NotificationManager::class.java)
         createChannelIfNeeded()
-        pairingRepository.markServiceRunning(true)
+        pairingRepository.markServiceRunning(false)
         startForeground(NOTIFICATION_ID, buildNotification())
-        server = embeddedServer(CIO, host = "0.0.0.0", port = 8765) {
-            with(
-                TransferServer(pairingRepository, gallerySaver) {
+        try {
+            server = ReceiverHttpServer(
+                transferServer = TransferServer(pairingRepository, gallerySaver) {
                     updateNotification()
                 },
-            ) {
-                installRoutes()
-            }
-        }.start(wait = false)
+                port = PORT,
+            )
+            server?.start(SOCKET_READ_TIMEOUT_MS, false)
+            pairingRepository.markServiceRunning(true)
+        } catch (exception: Exception) {
+            Log.e(TAG, "Failed to start receiver HTTP server", exception)
+            pairingRepository.markServiceRunning(
+                isRunning = false,
+                error = "${exception.javaClass.simpleName}: ${exception.message.orEmpty()}".trim(),
+            )
+        }
         updateNotification()
     }
 
     override fun onDestroy() {
         pairingRepository.markServiceRunning(false)
-        server?.stop(1000, 2000)
+        server?.stop()
         super.onDestroy()
     }
 
@@ -56,6 +62,10 @@ class ReceiverService : Service() {
     private fun buildNotification(): Notification {
         val dashboard = pairingRepository.dashboardState()
         val contentText = when {
+            !dashboard.serviceRunning && !dashboard.serviceError.isNullOrBlank() ->
+                "Receiver stopped: ${dashboard.serviceError}"
+            !dashboard.serviceRunning ->
+                "Starting receiver on port $PORT"
             dashboard.pendingRequest != null ->
                 "Pending pairing: ${dashboard.pendingRequest.senderName} (${dashboard.pendingRequest.verificationCode})"
             dashboard.lastCapture != null ->
@@ -96,8 +106,10 @@ class ReceiverService : Service() {
     }
 
     companion object {
+        private const val TAG = "SnapBridgeReceiver"
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_REFRESH_NOTIFICATION = "dev.snapbridge.receiver.action.REFRESH_NOTIFICATION"
+        private const val SOCKET_READ_TIMEOUT_MS = 5000
         const val PORT = 8765
 
         fun ensureRunning(context: Context) {
