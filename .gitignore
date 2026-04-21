@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Build
+dist/
+build/
+*.log
+
+# Android / IntelliJ
+.gradle/
+.idea/
+local.properties
+captures/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# App data
+apps/windows-sender/.snapbridge/
+tools/mock-receiver/.snapbridge-mock/
+tools/mock-receiver/received/
