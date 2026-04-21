@@ -1,6 +1,12 @@
 name: Android Debug APK
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/android-receiver/**
+      - .github/workflows/android-debug-apk.yml
   workflow_dispatch:
 
 concurrency:
