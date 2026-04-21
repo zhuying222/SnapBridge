@@ -76,3 +76,6 @@ That path verifies the protocol and crypto contract locally without claiming And
 2. Validate pairing and gallery-save flow on a real LAN between Windows and Android.
 3. Add receiver discovery so the sender does not require manual URL entry.
 4. Harden retry and offline behavior after the real-device path is stable.
+
+
+附注：接收端放后台就不能接收的话，可以去设置里面管理此应用允许后台运行。
