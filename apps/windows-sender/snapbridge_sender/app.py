@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from tkinter import messagebox
 from urllib.parse import urlparse
 
@@ -82,6 +84,11 @@ class SnapBridgeApp:
         },
     }
 
+    @staticmethod
+    def _asset_path(name: str) -> Path:
+        base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+        return base_dir / "assets" / name
+
     def __init__(self) -> None:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
@@ -97,6 +104,7 @@ class SnapBridgeApp:
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
         self.root.configure(bg=self.TRANSPARENT_COLOR)
+        self._apply_window_icon()
         self.root.geometry(
             f"{self.WINDOW_SIZE}x{self.WINDOW_SIZE}+"
             f"{self.settings.floating_button_x}+{self.settings.floating_button_y}"
@@ -130,6 +138,15 @@ class SnapBridgeApp:
         self._build_ui()
         self._refresh_action_state()
         self.root.after(180, lambda: self._show_status_bubble(persist_ms=2400))
+
+    def _apply_window_icon(self) -> None:
+        icon_path = self._asset_path("snapbridge.ico")
+        if not icon_path.exists():
+            return
+        try:
+            self.root.iconbitmap(default=str(icon_path))
+        except tk.TclError:
+            pass
 
     def _build_ui(self) -> None:
         self.orb_canvas = tk.Canvas(

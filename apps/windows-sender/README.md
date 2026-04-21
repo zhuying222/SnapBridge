@@ -18,6 +18,15 @@ pip install -r requirements.txt
 python run_sender.py
 ```
 
+## Build EXE
+
+```powershell
+cd D:\111\SnapBridge\apps\windows-sender
+.\build_exe.ps1
+```
+
+The packaged app is written to `dist\SnapBridgeSender.exe`. The build script also refreshes the app icon in `assets\snapbridge.ico`.
+
 ## Daily Use
 
 - Left-click the floating orb to start region capture and send the result immediately.
