@@ -27,9 +27,13 @@ class ReceiverService : Service() {
         pairingRepository.markServiceRunning(true)
         startForeground(NOTIFICATION_ID, buildNotification())
         server = embeddedServer(CIO, host = "0.0.0.0", port = 8765) {
-            TransferServer(pairingRepository, gallerySaver) {
-                updateNotification()
-            }.installRoutes()
+            with(
+                TransferServer(pairingRepository, gallerySaver) {
+                    updateNotification()
+                },
+            ) {
+                installRoutes()
+            }
         }.start(wait = false)
         updateNotification()
     }
