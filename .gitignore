@@ -23,3 +23,6 @@ Desktop.ini
 apps/windows-sender/.snapbridge/
 tools/mock-receiver/.snapbridge-mock/
 tools/mock-receiver/received/
+
+# Local artifacts
+snapbridge-receiver-debug-apk.zip

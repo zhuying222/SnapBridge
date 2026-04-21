@@ -195,6 +195,16 @@ class PairingRepository(context: Context) {
             .apply()
     }
 
+    fun markServiceStartRequested(isRequested: Boolean) {
+        prefs.edit()
+            .putBoolean(KEY_SERVICE_START_REQUESTED, isRequested)
+            .apply()
+    }
+
+    fun shouldKeepServiceAlive(): Boolean {
+        return prefs.getBoolean(KEY_SERVICE_START_REQUESTED, false)
+    }
+
     fun dashboardState(): ReceiverDashboardState {
         synchronized(lock) {
             val state = refreshChallengeIfExpired(loadState())
@@ -202,6 +212,7 @@ class PairingRepository(context: Context) {
             val lastCapture = state.recentCaptures.firstOrNull()
             val serviceRunning = prefs.getBoolean(KEY_SERVICE_RUNNING, false)
             val serviceError = prefs.getString(KEY_SERVICE_ERROR, null)
+            val serviceRequested = shouldKeepServiceAlive()
             return ReceiverDashboardState(
                 receiverName = state.receiverName,
                 receiverId = state.receiverId,
@@ -212,15 +223,17 @@ class PairingRepository(context: Context) {
                 pairedSenderCount = state.pairedSenders.size,
                 nextAction = when {
                     !serviceRunning && !serviceError.isNullOrBlank() ->
-                        "Receiver HTTP service failed to start: $serviceError"
+                        "Receiver HTTP service is not active: $serviceError. Tap restart and review Huawei background settings."
+                    !serviceRunning && serviceRequested ->
+                        "Receiver service is waiting to restart. Keep the foreground notification visible and allow Huawei background launch."
                     !serviceRunning ->
-                        "Open the receiver screen and wait for the local HTTP service to start."
+                        "Open the receiver screen and start the foreground receiver service."
                     pendingRequest != null ->
                         "Verify the six-digit code on both devices, then approve or reject this sender."
                     state.pairedSenders.isEmpty() ->
-                        "Keep the receiver service running and enter the pairing code on the Windows sender."
+                        "Keep the receiver notification visible, then enter the pairing code on the Windows sender."
                     else ->
-                        "Pairing is complete. New screenshots should decrypt and save into Pictures/SnapBridge."
+                        "Pairing is complete. Keep Huawei battery and App launch settings relaxed so screenshots can arrive in background."
                 },
                 pendingRequest = pendingRequest?.let {
                     PendingPairingSummary(
@@ -308,6 +321,7 @@ class PairingRepository(context: Context) {
         private const val KEY_STATE = "receiver_state"
         private const val KEY_SERVICE_RUNNING = "service_running"
         private const val KEY_SERVICE_ERROR = "service_error"
+        private const val KEY_SERVICE_START_REQUESTED = "service_start_requested"
         private const val CHALLENGE_TTL_SECONDS = 300L
         private const val MAX_REQUESTS = 20
         private const val MAX_PAIRED_SENDERS = 8

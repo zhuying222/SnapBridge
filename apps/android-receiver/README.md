@@ -18,14 +18,17 @@ This directory holds the native Android receiver app for Huawei tablets that can
   - return a signed acknowledgement compatible with the current Windows sender
 - duplicate `message_id` detection for recent captures
 - clearer dashboard and foreground notification state for current receiver status, next action, pending request, and last saved capture
+- hardened receiver foreground-service lifecycle:
+  - foreground service type aligned to a connected-device LAN receiver
+  - `BOOT_COMPLETED` / package-replaced auto-start hooks once the service has been armed by the user
+  - best-effort restart after task removal or unexpected service destruction
+- notification permission handling plus battery-optimization and Huawei Phone Manager guidance on the main screen
 
 ## Still Pending
 
 - actual build and device verification from Android Studio on a machine with Java/Gradle/Android SDK
 - end-to-end interop confirmation against the Windows sender on a Huawei tablet
 - LAN discovery, TLS transport, and certificate/pin management
-- notification permission handling and Huawei-specific background execution tuning
-- any boot-start or battery-optimization UX
 
 ## Environment Needed To Build
 

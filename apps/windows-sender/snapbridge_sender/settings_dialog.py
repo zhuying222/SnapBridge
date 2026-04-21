@@ -17,10 +17,22 @@ class PairingFormData:
 class SettingsDialog:
     STATUS_COLORS = {
         "info": "#cbd5e1",
-        "success": "#86efac",
+        "success": "#bbf7d0",
         "busy": "#fde68a",
-        "error": "#fca5a5",
+        "error": "#fecaca",
     }
+
+    STATUS_ACCENTS = {
+        "info": "#3b82f6",
+        "success": "#22c55e",
+        "busy": "#f59e0b",
+        "error": "#ef4444",
+    }
+
+    PANEL_BG = "#0f1d31"
+    PANEL_BORDER = "#1d3b5c"
+    WINDOW_BG = "#091523"
+    ENTRY_BG = "#13243a"
 
     def __init__(
         self,
@@ -31,6 +43,7 @@ class SettingsDialog:
         on_clear_pairing: Callable[[], None],
         on_close: Callable[[], None],
     ) -> None:
+        self.parent = parent
         self.on_save = on_save
         self.on_pair = on_pair
         self.on_clear_pairing = on_clear_pairing
@@ -40,7 +53,7 @@ class SettingsDialog:
         self.window.title("SnapBridge Settings")
         self.window.transient(parent)
         self.window.resizable(False, False)
-        self.window.configure(bg="#0f172a")
+        self.window.configure(bg=self.WINDOW_BG)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
 
         self.device_name_var = tk.StringVar()
@@ -54,6 +67,7 @@ class SettingsDialog:
         self.receiver_url_entry: tk.Entry | None = None
         self.pairing_code_entry: tk.Entry | None = None
         self.status_label: tk.Label | None = None
+        self.status_frame: tk.Frame | None = None
         self.save_button: tk.Button | None = None
         self.pair_button: tk.Button | None = None
         self.clear_button: tk.Button | None = None
@@ -62,124 +76,91 @@ class SettingsDialog:
         self.refresh(settings)
 
     def _build_ui(self) -> None:
-        frame = tk.Frame(self.window, bg="#0f172a", padx=16, pady=16)
-        frame.pack(fill="both", expand=True)
+        shell = tk.Frame(self.window, bg=self.WINDOW_BG, padx=20, pady=20)
+        shell.pack(fill="both", expand=True)
+
+        header = tk.Frame(shell, bg=self.WINDOW_BG)
+        header.pack(fill="x")
 
         tk.Label(
-            frame,
-            text="Device Name",
-            anchor="w",
-            bg="#0f172a",
-            fg="#e2e8f0",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=0, column=0, sticky="w")
-        self.device_name_entry = tk.Entry(
-            frame,
-            textvariable=self.device_name_var,
-            width=42,
-            bg="#111827",
-            fg="white",
-            insertbackground="white",
-            relief="flat",
-        )
-        self.device_name_entry.grid(row=1, column=0, sticky="ew", pady=(4, 10))
-
-        tk.Label(
-            frame,
-            text="Receiver URL",
-            anchor="w",
-            bg="#0f172a",
-            fg="#e2e8f0",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=2, column=0, sticky="w")
-        self.receiver_url_entry = tk.Entry(
-            frame,
-            textvariable=self.receiver_url_var,
-            width=42,
-            bg="#111827",
-            fg="white",
-            insertbackground="white",
-            relief="flat",
-        )
-        self.receiver_url_entry.grid(row=3, column=0, sticky="ew", pady=(4, 10))
-
-        tk.Label(
-            frame,
-            text="Tablet Pairing Code",
-            anchor="w",
-            bg="#0f172a",
-            fg="#e2e8f0",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=4, column=0, sticky="w")
-        self.pairing_code_entry = tk.Entry(
-            frame,
-            textvariable=self.pairing_code_var,
-            width=42,
-            bg="#111827",
-            fg="white",
-            insertbackground="white",
-            relief="flat",
-        )
-        self.pairing_code_entry.grid(row=5, column=0, sticky="ew", pady=(4, 10))
-
-        tk.Label(
-            frame,
-            text="Current Receiver",
-            anchor="w",
-            bg="#0f172a",
-            fg="#e2e8f0",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=6, column=0, sticky="w")
-        tk.Label(
-            frame,
-            textvariable=self.current_receiver_var,
-            anchor="w",
-            justify="left",
-            bg="#111827",
-            fg="#cbd5e1",
-            padx=10,
-            pady=8,
-            wraplength=320,
-        ).grid(row=7, column=0, sticky="ew", pady=(4, 10))
-
-        tk.Label(
-            frame,
-            text="Verification Code",
-            anchor="w",
-            bg="#0f172a",
-            fg="#e2e8f0",
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=8, column=0, sticky="w")
-        tk.Label(
-            frame,
-            textvariable=self.verification_code_var,
-            anchor="w",
-            justify="left",
-            bg="#111827",
+            header,
+            text="SnapBridge Sender",
+            bg=self.WINDOW_BG,
             fg="#f8fafc",
-            padx=10,
-            pady=8,
-            wraplength=320,
-        ).grid(row=9, column=0, sticky="ew", pady=(4, 12))
+            font=("Segoe UI", 15, "bold"),
+        ).pack(anchor="w")
 
-        button_row = tk.Frame(frame, bg="#0f172a")
-        button_row.grid(row=10, column=0, sticky="ew")
-        button_row.columnconfigure(0, weight=1)
-        button_row.columnconfigure(1, weight=1)
-        button_row.columnconfigure(2, weight=1)
-        button_row.columnconfigure(3, weight=1)
+        tk.Label(
+            header,
+            text="Configure the receiver once, then use the floating orb for left-click capture and right-click actions.",
+            bg=self.WINDOW_BG,
+            fg="#94a3b8",
+            justify="left",
+            wraplength=430,
+            font=("Segoe UI", 9),
+            pady=6,
+        ).pack(anchor="w")
+
+        form_card = self._card(shell)
+        form_card.pack(fill="x", pady=(14, 12))
+
+        self.device_name_entry = self._create_field(
+            form_card,
+            label="Device Name",
+            hint="Shown on the tablet when it receives a pairing request.",
+            textvariable=self.device_name_var,
+        )
+        self.receiver_url_entry = self._create_field(
+            form_card,
+            label="Receiver URL",
+            hint="Example: http://192.168.1.25:8765",
+            textvariable=self.receiver_url_var,
+        )
+        self.pairing_code_entry = self._create_field(
+            form_card,
+            label="Tablet Pairing Code",
+            hint="Enter the short code currently shown on the Android receiver.",
+            textvariable=self.pairing_code_var,
+        )
+
+        info_row = tk.Frame(shell, bg=self.WINDOW_BG)
+        info_row.pack(fill="x")
+        info_row.columnconfigure(0, weight=1)
+        info_row.columnconfigure(1, weight=1)
+
+        receiver_card = self._card(info_row)
+        receiver_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        verification_card = self._card(info_row)
+        verification_card.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        self._create_info_block(
+            receiver_card,
+            title="Current Receiver",
+            value_var=self.current_receiver_var,
+        )
+        self._create_info_block(
+            verification_card,
+            title="Verification Code",
+            value_var=self.verification_code_var,
+            code_style=True,
+        )
+
+        button_row = tk.Frame(shell, bg=self.WINDOW_BG, pady=14)
+        button_row.pack(fill="x")
+        for column in range(4):
+            button_row.columnconfigure(column, weight=1)
 
         self.save_button = tk.Button(
             button_row,
             text="Save",
             command=self._handle_save,
-            bg="#334155",
+            bg="#1d4ed8",
             fg="white",
-            activebackground="#475569",
+            activebackground="#1e40af",
             activeforeground="white",
             bd=0,
             padx=10,
-            pady=6,
+            pady=8,
         )
         self.save_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
@@ -187,27 +168,27 @@ class SettingsDialog:
             button_row,
             text="Pair",
             command=self._handle_pair,
-            bg="#2563eb",
+            bg="#0f766e",
             fg="white",
-            activebackground="#1d4ed8",
+            activebackground="#115e59",
             activeforeground="white",
             bd=0,
             padx=10,
-            pady=6,
+            pady=8,
         )
         self.pair_button.grid(row=0, column=1, sticky="ew", padx=6)
 
         self.clear_button = tk.Button(
             button_row,
-            text="Forget",
+            text="Clear Pairing",
             command=self.on_clear_pairing,
-            bg="#7f1d1d",
+            bg="#9a3412",
             fg="white",
-            activebackground="#991b1b",
+            activebackground="#7c2d12",
             activeforeground="white",
             bd=0,
             padx=10,
-            pady=6,
+            pady=8,
         )
         self.clear_button.grid(row=0, column=2, sticky="ew", padx=6)
 
@@ -215,28 +196,124 @@ class SettingsDialog:
             button_row,
             text="Close",
             command=self.close,
-            bg="#1f2937",
+            bg="#334155",
             fg="white",
-            activebackground="#374151",
+            activebackground="#475569",
             activeforeground="white",
             bd=0,
             padx=10,
-            pady=6,
+            pady=8,
         ).grid(row=0, column=3, sticky="ew", padx=(6, 0))
 
+        self.status_frame = tk.Frame(
+            shell,
+            bg=self.PANEL_BG,
+            padx=12,
+            pady=10,
+            highlightthickness=1,
+            highlightbackground=self.STATUS_ACCENTS["info"],
+        )
+        self.status_frame.pack(fill="x")
+
         self.status_label = tk.Label(
-            frame,
+            self.status_frame,
             textvariable=self.status_var,
             anchor="w",
             justify="left",
-            bg="#0f172a",
+            bg=self.PANEL_BG,
             fg=self.STATUS_COLORS["info"],
-            wraplength=320,
-            pady=10,
+            wraplength=430,
+            font=("Segoe UI", 9),
         )
-        self.status_label.grid(row=11, column=0, sticky="ew")
+        self.status_label.pack(fill="x")
 
-        frame.columnconfigure(0, weight=1)
+    def _card(self, parent: tk.Misc) -> tk.Frame:
+        return tk.Frame(
+            parent,
+            bg=self.PANEL_BG,
+            padx=14,
+            pady=14,
+            highlightthickness=1,
+            highlightbackground=self.PANEL_BORDER,
+        )
+
+    def _create_field(
+        self,
+        parent: tk.Misc,
+        label: str,
+        hint: str,
+        textvariable: tk.StringVar,
+    ) -> tk.Entry:
+        block = tk.Frame(parent, bg=self.PANEL_BG)
+        block.pack(fill="x", pady=(0, 12))
+
+        tk.Label(
+            block,
+            text=label,
+            anchor="w",
+            bg=self.PANEL_BG,
+            fg="#e2e8f0",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(anchor="w")
+
+        tk.Label(
+            block,
+            text=hint,
+            anchor="w",
+            justify="left",
+            bg=self.PANEL_BG,
+            fg="#94a3b8",
+            wraplength=400,
+            font=("Segoe UI", 8),
+            pady=4,
+        ).pack(anchor="w")
+
+        entry = tk.Entry(
+            block,
+            textvariable=textvariable,
+            width=48,
+            bg=self.ENTRY_BG,
+            fg="#f8fafc",
+            insertbackground="#f8fafc",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#32506f",
+            highlightcolor="#60a5fa",
+        )
+        entry.pack(fill="x", ipady=6)
+        return entry
+
+    def _create_info_block(
+        self,
+        parent: tk.Misc,
+        title: str,
+        value_var: tk.StringVar,
+        code_style: bool = False,
+    ) -> None:
+        tk.Label(
+            parent,
+            text=title,
+            anchor="w",
+            bg=self.PANEL_BG,
+            fg="#e2e8f0",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(anchor="w")
+
+        value_font = ("Consolas", 14, "bold") if code_style else ("Segoe UI", 9)
+        value_color = "#f8fafc" if code_style else "#cbd5e1"
+
+        tk.Label(
+            parent,
+            textvariable=value_var,
+            anchor="w",
+            justify="left",
+            bg=self.ENTRY_BG,
+            fg=value_color,
+            padx=10,
+            pady=12,
+            wraplength=180,
+            font=value_font,
+        ).pack(fill="x", pady=(6, 0))
 
     def _handle_save(self) -> None:
         self.on_save(self.form_data())
@@ -258,8 +335,22 @@ class SettingsDialog:
         if settings.receiver is None:
             self.verification_code_var.set("Not requested yet")
 
+    def _center_over_parent(self) -> None:
+        self.window.update_idletasks()
+        parent_x = self.parent.winfo_rootx()
+        parent_y = self.parent.winfo_rooty()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        window_width = self.window.winfo_reqwidth()
+        window_height = self.window.winfo_reqheight()
+
+        x = max(24, parent_x + (parent_width - window_width) // 2)
+        y = max(24, parent_y + (parent_height - window_height) // 2)
+        self.window.geometry(f"+{x}+{y}")
+
     def show(self) -> None:
         self.window.deiconify()
+        self._center_over_parent()
         self.window.lift()
         self.window.focus_force()
         self.window.grab_set()
@@ -280,6 +371,10 @@ class SettingsDialog:
         self.status_var.set(message)
         if self.status_label is not None:
             self.status_label.configure(fg=self.STATUS_COLORS.get(tone, self.STATUS_COLORS["info"]))
+        if self.status_frame is not None:
+            self.status_frame.configure(
+                highlightbackground=self.STATUS_ACCENTS.get(tone, self.STATUS_ACCENTS["info"])
+            )
 
     def set_verification_code(self, code: str) -> None:
         self.verification_code_var.set(code)

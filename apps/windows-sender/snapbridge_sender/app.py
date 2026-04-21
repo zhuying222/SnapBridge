@@ -30,11 +30,56 @@ class CachedCapture:
 
 
 class SnapBridgeApp:
+    WINDOW_SIZE = 112
+    DRAG_THRESHOLD = 6
+    STATUS_HIDE_DELAY_MS = 3600
+    TRANSPARENT_COLOR = "#010203"
+
     STATUS_COLORS = {
-        "info": "#d1d5db",
-        "success": "#86efac",
+        "info": "#cbd5e1",
+        "success": "#bbf7d0",
         "busy": "#fde68a",
-        "error": "#fca5a5",
+        "error": "#fecaca",
+    }
+
+    STATUS_ACCENTS = {
+        "info": "#3b82f6",
+        "success": "#22c55e",
+        "busy": "#f59e0b",
+        "error": "#ef4444",
+    }
+
+    ORB_STYLES = {
+        "ready": {
+            "shadow": "#09121c",
+            "outer": "#11253d",
+            "middle": "#1c3b63",
+            "inner": "#2563eb",
+            "ring": "#dbeafe",
+            "label": "#f8fafc",
+            "secondary": "#bfdbfe",
+            "dot": "#86efac",
+        },
+        "unpaired": {
+            "shadow": "#191309",
+            "outer": "#342812",
+            "middle": "#664518",
+            "inner": "#d97706",
+            "ring": "#ffedd5",
+            "label": "#fff7ed",
+            "secondary": "#fed7aa",
+            "dot": "#fbbf24",
+        },
+        "busy": {
+            "shadow": "#1e1209",
+            "outer": "#4a2b0b",
+            "middle": "#8a4b12",
+            "inner": "#ea580c",
+            "ring": "#ffedd5",
+            "label": "#fff7ed",
+            "secondary": "#fed7aa",
+            "dot": "#fde68a",
+        },
     }
 
     def __init__(self) -> None:
@@ -49,160 +94,179 @@ class SnapBridgeApp:
         self.root = tk.Tk()
         self.root.title("SnapBridge")
         self.root.overrideredirect(True)
+        self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
-        self.root.configure(bg="#111827")
-        self.root.geometry(f"240x154+{self.settings.floating_button_x}+{self.settings.floating_button_y}")
+        self.root.configure(bg=self.TRANSPARENT_COLOR)
+        self.root.geometry(
+            f"{self.WINDOW_SIZE}x{self.WINDOW_SIZE}+"
+            f"{self.settings.floating_button_x}+{self.settings.floating_button_y}"
+        )
+        try:
+            self.root.wm_attributes("-transparentcolor", self.TRANSPARENT_COLOR)
+        except tk.TclError:
+            pass
 
         self.pairing_client = PairingClient()
         self.transfer_client = TransferClient()
 
         self.status_var = tk.StringVar(value=self._default_status())
-        self._drag_offset_x = 0
-        self._drag_offset_y = 0
+        self._status_tone = "info"
+        self._drag_origin_pointer = (0, 0)
+        self._drag_origin_window = (0, 0)
+        self._is_dragging = False
+        self._hovered = False
+        self._floating_hidden = False
+        self._status_hide_job: str | None = None
         self.is_busy = False
         self.last_capture: CachedCapture | None = None
         self.settings_dialog: SettingsDialog | None = None
 
-        self.capture_button: tk.Button | None = None
-        self.resend_button: tk.Button | None = None
-        self.setup_button: tk.Button | None = None
+        self.orb_canvas: tk.Canvas | None = None
+        self.menu: tk.Menu | None = None
+        self.status_window: tk.Toplevel | None = None
+        self.status_frame: tk.Frame | None = None
         self.status_label: tk.Label | None = None
 
         self._build_ui()
         self._refresh_action_state()
+        self.root.after(180, lambda: self._show_status_bubble(persist_ms=2400))
 
     def _build_ui(self) -> None:
-        frame = tk.Frame(self.root, bg="#111827", bd=1, relief="solid")
-        frame.pack(fill="both", expand=True)
-
-        header = tk.Frame(frame, bg="#111827")
-        header.pack(fill="x", padx=8, pady=(8, 6))
-
-        title = tk.Label(
-            header,
-            text="SnapBridge",
-            bg="#111827",
-            fg="white",
-            font=("Segoe UI", 9, "bold"),
-        )
-        title.pack(side="left")
-
-        self.setup_button = tk.Button(
-            header,
-            text="Setup",
-            command=self.open_settings_dialog,
-            bg="#334155",
-            fg="white",
-            activebackground="#475569",
-            activeforeground="white",
+        self.orb_canvas = tk.Canvas(
+            self.root,
+            width=self.WINDOW_SIZE,
+            height=self.WINDOW_SIZE,
+            bg=self.TRANSPARENT_COLOR,
             bd=0,
-            padx=10,
-            pady=4,
+            highlightthickness=0,
+            relief="flat",
+            cursor="hand2",
         )
-        self.setup_button.pack(side="right")
+        self.orb_canvas.pack(fill="both", expand=True)
 
-        self.capture_button = tk.Button(
-            frame,
-            command=self.on_main_action,
-            bg="#2563eb",
-            fg="white",
-            activebackground="#1d4ed8",
-            activeforeground="white",
-            bd=0,
-            padx=16,
-            pady=8,
-        )
-        self.capture_button.pack(fill="x", padx=8, pady=(0, 6))
-
-        self.resend_button = tk.Button(
-            frame,
-            text="Send Last Capture Again",
-            command=self.resend_last_capture,
-            bg="#1f2937",
-            fg="white",
-            activebackground="#374151",
-            activeforeground="white",
-            bd=0,
-            padx=16,
-            pady=7,
-        )
-        self.resend_button.pack(fill="x", padx=8, pady=(0, 6))
-
-        self.status_label = tk.Label(
-            frame,
-            textvariable=self.status_var,
-            bg="#111827",
-            fg="#d1d5db",
-            font=("Segoe UI", 8),
-            justify="left",
-            anchor="w",
-            wraplength=214,
-        )
-        self.status_label.pack(fill="x", padx=8, pady=(0, 10))
+        self.orb_canvas.bind("<ButtonPress-1>", self._on_left_press)
+        self.orb_canvas.bind("<B1-Motion>", self._on_left_drag)
+        self.orb_canvas.bind("<ButtonRelease-1>", self._on_left_release)
+        self.orb_canvas.bind("<Button-3>", self.show_menu)
+        self.orb_canvas.bind("<Enter>", self._on_hover_enter)
+        self.orb_canvas.bind("<Leave>", self._on_hover_leave)
 
         self.menu = tk.Menu(self.root, tearoff=False)
-        self.menu.add_command(label="Capture Now", command=self.capture_and_send)
-        self.menu.add_command(label="Send Last Capture Again", command=self.resend_last_capture)
+        self.menu.add_command(label="Capture and Send", command=self.capture_and_send)
+        self.menu.add_command(label="Resend Last Capture", command=self.resend_last_capture)
         self.menu.add_separator()
-        self.menu.add_command(label="Open Settings", command=self.open_settings_dialog)
+        self.menu.add_command(label="Settings", command=self.open_settings_dialog)
         self.menu.add_command(label="Clear Pairing", command=self.clear_pairing)
         self.menu.add_separator()
-        self.menu.add_command(label="Quit", command=self.quit)
+        self.menu.add_command(label="Exit", command=self.quit)
 
-        for widget in (self.root, frame, header, title, self.capture_button, self.resend_button, self.setup_button, self.status_label):
-            widget.bind("<Button-3>", self.show_menu)
+        self.status_window = tk.Toplevel(self.root)
+        self.status_window.overrideredirect(True)
+        self.status_window.attributes("-topmost", True)
+        self.status_window.configure(bg="#08111d")
+        self.status_window.withdraw()
 
-        for drag_handle in (frame, header, title, self.status_label):
-            self._bind_drag_handle(drag_handle)
+        self.status_frame = tk.Frame(
+            self.status_window,
+            bg="#08111d",
+            padx=12,
+            pady=9,
+            highlightthickness=1,
+            highlightbackground=self.STATUS_ACCENTS["info"],
+        )
+        self.status_frame.pack(fill="both", expand=True)
 
-    def _bind_drag_handle(self, widget: tk.Misc) -> None:
-        widget.bind("<ButtonPress-1>", self._start_drag)
-        widget.bind("<B1-Motion>", self._on_drag)
-        widget.bind("<ButtonRelease-1>", self._end_drag)
+        self.status_label = tk.Label(
+            self.status_frame,
+            textvariable=self.status_var,
+            bg="#08111d",
+            fg=self.STATUS_COLORS["info"],
+            justify="left",
+            anchor="w",
+            wraplength=240,
+            font=("Segoe UI", 9),
+        )
+        self.status_label.pack(fill="both", expand=True)
+
+        self.root.bind("<Configure>", lambda _event: self._position_status_bubble())
 
     def _default_status(self) -> str:
         if self.settings.receiver is None:
-            return "Not paired. Open Setup to pair a tablet."
-        return f"Ready for {self.settings.receiver.receiver_name}."
+            return "Not paired. Left-click to open settings, or right-click for more actions."
+        return (
+            f"Ready for {self.settings.receiver.receiver_name}. "
+            "Left-click captures and sends immediately."
+        )
 
-    def _start_drag(self, event: tk.Event) -> None:
-        self._drag_offset_x = event.x_root - self.root.winfo_x()
-        self._drag_offset_y = event.y_root - self.root.winfo_y()
+    def _current_orb_state(self) -> str:
+        if self.is_busy:
+            return "busy"
+        if self.settings.receiver is None:
+            return "unpaired"
+        return "ready"
 
-    def _on_drag(self, event: tk.Event) -> None:
-        x = self.root.winfo_pointerx() - self._drag_offset_x
-        y = self.root.winfo_pointery() - self._drag_offset_y
-        self.root.geometry(f"+{x}+{y}")
+    def _orb_copy(self) -> tuple[str, str]:
+        if self.is_busy:
+            return ("Wait", "sending")
+        if self.settings.receiver is None:
+            return ("Pair", "setup")
+        return ("Snap", "send")
 
-    def _end_drag(self, _event: tk.Event) -> None:
-        self.settings.floating_button_x = self.root.winfo_x()
-        self.settings.floating_button_y = self.root.winfo_y()
-        save_settings(self.settings)
+    def _render_orb(self) -> None:
+        if self.orb_canvas is None:
+            return
 
-    def show_menu(self, event: tk.Event) -> None:
-        try:
-            self.menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.menu.grab_release()
+        style = self.ORB_STYLES[self._current_orb_state()]
+        headline, subline = self._orb_copy()
+        canvas = self.orb_canvas
+        canvas.delete("all")
 
-    def set_status(self, message: str, tone: str = "info") -> None:
-        timestamped_message = f"{datetime.now().strftime('%H:%M:%S')}  {message}"
-        self.status_var.set(timestamped_message)
-        if self.status_label is not None:
-            self.status_label.configure(fg=self.STATUS_COLORS.get(tone, self.STATUS_COLORS["info"]))
-        self.root.update_idletasks()
+        hover_outline = style["ring"] if self._hovered else style["secondary"]
+        size = self.WINDOW_SIZE
+        center = size // 2
+
+        canvas.create_oval(18, 20, 102, 104, fill=style["shadow"], outline="")
+        canvas.create_oval(10, 10, 102, 102, fill=style["outer"], outline="")
+        canvas.create_oval(15, 15, 97, 97, fill=style["middle"], outline="")
+        canvas.create_oval(21, 21, 91, 91, fill=style["inner"], outline="")
+        canvas.create_oval(18, 18, 96, 96, outline=hover_outline, width=2)
+        canvas.create_arc(26, 18, 84, 52, start=12, extent=124, style="arc", outline=style["ring"], width=2)
+
+        canvas.create_text(
+            center,
+            50,
+            text=headline,
+            fill=style["label"],
+            font=("Segoe UI", 16, "bold"),
+        )
+        canvas.create_text(
+            center,
+            70,
+            text=subline,
+            fill=style["secondary"],
+            font=("Segoe UI", 8, "bold"),
+        )
+        canvas.create_oval(80, 21, 90, 31, fill=style["dot"], outline="")
+
+        if self.last_capture is not None and self.settings.receiver is not None:
+            canvas.create_oval(79, 77, 92, 90, fill="#0f766e", outline="")
+            canvas.create_text(85, 84, text="R", fill="white", font=("Segoe UI", 7, "bold"))
+
+    def _update_menu_state(self) -> None:
+        if self.menu is None:
+            return
+        can_resend = self.last_capture is not None and self.settings.receiver is not None and not self.is_busy
+        action_state = "disabled" if self.is_busy else "normal"
+        clear_state = "normal" if self.settings.receiver is not None and not self.is_busy else "disabled"
+
+        self.menu.entryconfigure(0, state=action_state)
+        self.menu.entryconfigure(1, state="normal" if can_resend else "disabled")
+        self.menu.entryconfigure(3, state=action_state)
+        self.menu.entryconfigure(4, state=clear_state)
 
     def _refresh_action_state(self) -> None:
-        main_text = "Capture" if self.settings.receiver else "Pair Receiver"
-        button_state = "disabled" if self.is_busy else "normal"
-        can_resend = self.last_capture is not None and self.settings.receiver is not None and not self.is_busy
-
-        if self.capture_button is not None:
-            self.capture_button.configure(text=main_text, state=button_state)
-        if self.setup_button is not None:
-            self.setup_button.configure(state=button_state)
-        if self.resend_button is not None:
-            self.resend_button.configure(state="normal" if can_resend else "disabled")
+        self._render_orb()
+        self._update_menu_state()
 
     def _set_busy(self, is_busy: bool) -> None:
         self.is_busy = is_busy
@@ -219,13 +283,131 @@ class SnapBridgeApp:
             return None
         return self.settings_dialog
 
+    def _on_left_press(self, event: tk.Event) -> None:
+        self._cancel_status_hide()
+        self._drag_origin_pointer = (event.x_root, event.y_root)
+        self._drag_origin_window = (self.root.winfo_x(), self.root.winfo_y())
+        self._is_dragging = False
+
+    def _on_left_drag(self, event: tk.Event) -> None:
+        delta_x = event.x_root - self._drag_origin_pointer[0]
+        delta_y = event.y_root - self._drag_origin_pointer[1]
+        if not self._is_dragging and (
+            abs(delta_x) >= self.DRAG_THRESHOLD or abs(delta_y) >= self.DRAG_THRESHOLD
+        ):
+            self._is_dragging = True
+        if not self._is_dragging:
+            return
+
+        x = self._drag_origin_window[0] + delta_x
+        y = self._drag_origin_window[1] + delta_y
+        self.root.geometry(f"+{x}+{y}")
+        self._position_status_bubble()
+
+    def _on_left_release(self, _event: tk.Event) -> None:
+        if self._is_dragging:
+            self.settings.floating_button_x = self.root.winfo_x()
+            self.settings.floating_button_y = self.root.winfo_y()
+            save_settings(self.settings)
+            if not self.is_busy:
+                self._schedule_status_hide(700)
+            return
+        self.on_main_action()
+
+    def _on_hover_enter(self, _event: tk.Event) -> None:
+        self._hovered = True
+        self._refresh_action_state()
+        self._show_status_bubble()
+
+    def _on_hover_leave(self, _event: tk.Event) -> None:
+        self._hovered = False
+        self._refresh_action_state()
+        if not self.is_busy:
+            self._schedule_status_hide(650)
+
+    def _position_status_bubble(self) -> None:
+        if self.status_window is None or not self.status_window.winfo_exists():
+            return
+        if not self.status_window.winfo_viewable():
+            return
+
+        self.status_window.update_idletasks()
+        bubble_width = self.status_window.winfo_reqwidth()
+        bubble_height = self.status_window.winfo_reqheight()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        x = self.root.winfo_x() + self.WINDOW_SIZE + 12
+        if x + bubble_width > screen_width - 12:
+            x = max(12, self.root.winfo_x() - bubble_width - 12)
+
+        y = self.root.winfo_y() + (self.WINDOW_SIZE - bubble_height) // 2
+        y = max(12, min(screen_height - bubble_height - 12, y))
+
+        self.status_window.geometry(f"+{x}+{y}")
+
+    def _cancel_status_hide(self) -> None:
+        if self._status_hide_job is not None:
+            self.root.after_cancel(self._status_hide_job)
+            self._status_hide_job = None
+
+    def _schedule_status_hide(self, delay_ms: int) -> None:
+        if self.status_window is None or not self.status_window.winfo_exists():
+            return
+        self._cancel_status_hide()
+        self._status_hide_job = self.root.after(delay_ms, self._hide_status_bubble)
+
+    def _show_status_bubble(self, persist_ms: int | None = None) -> None:
+        if self._floating_hidden:
+            return
+        if self.status_window is None or not self.status_window.winfo_exists():
+            return
+        self._cancel_status_hide()
+        self.status_window.deiconify()
+        self.status_window.lift()
+        self._position_status_bubble()
+        if persist_ms is not None:
+            self._status_hide_job = self.root.after(persist_ms, self._hide_status_bubble)
+
+    def _hide_status_bubble(self) -> None:
+        self._status_hide_job = None
+        if self.status_window is not None and self.status_window.winfo_exists():
+            self.status_window.withdraw()
+
+    def show_menu(self, event: tk.Event) -> None:
+        if self.menu is None:
+            return
+        self._cancel_status_hide()
+        self._refresh_action_state()
+        try:
+            self.menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.menu.grab_release()
+        if not self.is_busy and not self._hovered:
+            self._schedule_status_hide(900)
+
+    def set_status(self, message: str, tone: str = "info") -> None:
+        self._status_tone = tone
+        timestamped_message = f"{datetime.now().strftime('%H:%M:%S')}  {message}"
+        self.status_var.set(timestamped_message)
+        if self.status_label is not None:
+            self.status_label.configure(fg=self.STATUS_COLORS.get(tone, self.STATUS_COLORS["info"]))
+        if self.status_frame is not None:
+            self.status_frame.configure(
+                highlightbackground=self.STATUS_ACCENTS.get(tone, self.STATUS_ACCENTS["info"])
+            )
+
+        persist_ms = None if tone == "busy" else self.STATUS_HIDE_DELAY_MS
+        self._show_status_bubble(persist_ms=persist_ms)
+        self.root.update_idletasks()
+
     def on_main_action(self) -> None:
         if self.is_busy:
             return
         if self.settings.receiver is None:
             self.open_settings_dialog()
-        else:
-            self.capture_and_send()
+            return
+        self.capture_and_send()
 
     def open_settings_dialog(self) -> None:
         dialog = self._get_settings_dialog()
@@ -361,15 +543,16 @@ class SnapBridgeApp:
         if dialog is not None:
             dialog.set_status(message, tone="error")
         self.set_status("Pairing failed.", tone="error")
-        messagebox.showerror("Pairing failed", message)
+        messagebox.showerror("Pairing failed", message, parent=self.root)
 
     def clear_pairing(self) -> None:
         if self.settings.receiver is None:
             dialog = self._get_settings_dialog()
             if dialog is not None:
                 dialog.set_status("No paired receiver to forget.", tone="info")
+            self.set_status("No paired receiver to forget.", tone="info")
             return
-        if not messagebox.askyesno("Clear Pairing", "Forget the current receiver?"):
+        if not messagebox.askyesno("Clear Pairing", "Forget the current receiver?", parent=self.root):
             return
         self.settings.receiver = None
         save_settings(self.settings)
@@ -379,8 +562,28 @@ class SnapBridgeApp:
             dialog.set_verification_code("Not requested yet")
             dialog.clear_pairing_code()
             dialog.set_status("Current receiver forgotten.", tone="success")
-        self.set_status("Pairing cleared. Open Setup to pair again.", tone="info")
+        self.set_status("Pairing cleared. Left-click to pair again.", tone="info")
         self._refresh_action_state()
+
+    def _hide_for_capture(self) -> None:
+        self._floating_hidden = True
+        self._hide_status_bubble()
+        try:
+            self.root.attributes("-alpha", 0.0)
+        except tk.TclError:
+            pass
+        self.root.update_idletasks()
+
+    def _restore_after_capture(self) -> None:
+        self._floating_hidden = False
+        try:
+            self.root.attributes("-alpha", 1.0)
+        except tk.TclError:
+            pass
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        if self._hovered or self.is_busy:
+            self._show_status_bubble()
 
     def capture_and_send(self) -> None:
         if self.is_busy:
@@ -388,8 +591,14 @@ class SnapBridgeApp:
         if self.settings.receiver is None:
             self.open_settings_dialog()
             return
-        overlay = ScreenCaptureOverlay(self.root)
-        capture = overlay.capture()
+
+        self._hide_for_capture()
+        try:
+            overlay = ScreenCaptureOverlay(self.root)
+            capture = overlay.capture()
+        finally:
+            self._restore_after_capture()
+
         if capture is None:
             self.set_status(self._default_status(), tone="info")
             return
@@ -453,8 +662,8 @@ class SnapBridgeApp:
     def _on_transfer_error(self, exc: Exception) -> None:
         self._set_busy(False)
         message = self._format_exception(exc)
-        self.set_status("Send failed. Use 'Send Last Capture Again' to retry.", tone="error")
-        messagebox.showerror("Transfer failed", message)
+        self.set_status("Send failed. Use 'Resend Last Capture' to retry.", tone="error")
+        messagebox.showerror("Transfer failed", message, parent=self.root)
 
     def _validate_settings_form(
         self,
@@ -476,7 +685,7 @@ class SnapBridgeApp:
         if dialog is not None:
             dialog.set_status(message, tone="error")
         self.set_status(message, tone="error")
-        messagebox.showerror("Settings", message)
+        messagebox.showerror("Settings", message, parent=self.root)
 
     @staticmethod
     def _normalize_receiver_url(receiver_url: str) -> str:
@@ -503,6 +712,9 @@ class SnapBridgeApp:
 
     def quit(self) -> None:
         save_settings(self.settings)
+        self._cancel_status_hide()
+        if self.status_window is not None and self.status_window.winfo_exists():
+            self.status_window.destroy()
         self.root.destroy()
 
     def run(self) -> None:
